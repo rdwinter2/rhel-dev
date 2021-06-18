@@ -1,0 +1,9 @@
+README.md.*
+certs/*
+!certs/README.md
+secrets/*
+!secrets/README.md
+logs/*
+!logs/README.md
+git-sync
+NUL
