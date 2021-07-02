@@ -454,3 +454,109 @@ services:
       traefik.http.routers.whoami.tls: true
       traefik.http.routers.whoami.tls.certResolver: step
       traefik.http.services.whoami.loadbalancer.server.port: 80
+
+
+##########
+
+t=$(mktemp -d);pushd $t
+VERSION=$(curl -fsSL "https://api.github.com/repos/grafana/loki/releases/latest" | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/' | cut -c2-)
+curl -fsSL -O "https://github.com/grafana/loki/releases/download/v${VERSION}/loki-linux-amd64.zip"
+curl -fsSL -O "https://github.com/grafana/loki/releases/download/v${VERSION}/promtail-linux-amd64.zip"
+curl -fsSL -O "https://github.com/grafana/loki/releases/download/v${VERSION}/logcli-linux-amd64.zip"
+unzip promtail-linux-amd64.zip
+sudo install -m755 ./promtail-linux-amd64 /usr/local/bin
+# Grafana
+
+VERSION=$(curl -fsSL "https://api.github.com/repos/grafana/grafana/releases/latest" | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/' | cut -c2-)
+curl -fsSL -O "https://dl.grafana.com/oss/release/grafana-8.0.3-1.x86_64.rpm"
+sudo yum install grafana-8.0.3-1.x86_64.rpm
+
+rm -rf promtail-linux-amd64*
+
+wget https://raw.githubusercontent.com/grafana/loki/master/cmd/loki/loki-local-config.yaml
+wget https://raw.githubusercontent.com/grafana/loki/main/clients/cmd/promtail/promtail-local-config.yaml
+./loki-linux-amd64 -config.file=loki-local-config.yaml
+./promtail-linux-amd64 -config.file=promtail-local-config.yaml
+
+curl -fsSL -O https://raw.githubusercontent.com/grafana/loki/main/clients/cmd/promtail/promtail-local-config.yaml
+
+cat <<-EOF > /etc/loki/promtail.yaml
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://localhost:3100/loki/api/v1/push
+
+scrape_configs:
+- job_name: system
+  static_configs:
+  - targets:
+      - localhost
+    labels:
+      job: varlogs
+      __path__: /var/log/*log
+- job_name: system2
+  static_configs:
+  - targets:
+      - localhost
+    labels:
+      job: varlogs2
+      __path__: /var/log/**/*.log
+- job_name: journal
+  journal:
+    max_age: 12h
+    labels:
+      job: systemd-journal
+  relabel_configs:
+  - source_labels: ['__journal__systemd_unit']
+    target_label: systemd_unit
+  - source_labels:
+    - __journal__hostname
+    target_label: nodename
+  - source_labels:
+    - __journal_syslog_identifier
+    target_label: syslog_identifier
+EOF
+
+sudo useradd --system promtail
+
+cat <<-EOF > /etc/systemd/system/promtail.service
+[Unit]
+Description=Promtail service
+After=network.target
+
+[Service]
+Type=simple
+User=promtail
+ExecStart=/usr/local/bin/promtail -config.file /etc/loki/promtail.yaml
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemd start promtail && systemd enable promtail
+
+
+usermod -a -G systemd-journal promtail
+
+popd
+
+## Red Hat Enterprise Linux (RHEL)
+
+First register with subscription manager
+
+```sh
+su -
+subscription-manager register --username rdwinter2@gmail.com  --auto-attach
+cat <<- EOF > /etc/sudoers.d/adminx
+adminx ALL=(ALL) NOPASSWD: ALL
+EOF
+yum update -y
+yum install -y git
+exit
+ssh-keygen -o -a 100 -t ed25519 -f ~/.ssh/id_ed25519 -N "" -C "adminx@localhost.localdomain"
+```

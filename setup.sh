@@ -2,6 +2,8 @@
 # To run 
 # curl -LsSf https://raw.githubusercontent.com/rdwinter2/dev/main/setup.sh | bash
 echo "Running script... 🚀"
+export DISTRO=$(if grep -q "Red Hat Enterprise Linux" /etc/os-release;  then echo rhel; else echo deb; fi)
+
 #sudo apt-key adv --keyserver keyring.debian.org --recv-keys 7EA0A9C3F273FCD8
 curl -fsSL https://download.docker.com/linux/debian/gpg | sudo apt-key add -
 sudo apt-get update -yqq
