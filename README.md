@@ -69,8 +69,8 @@ First, create a password for the root CA's key. Then create the root CA certific
 mkdir -p $HOME/.certs; pushd $HOME/.certs
 [[ -f rootCA_password ]] || echo $(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1) > rootCA_password
 cat rootCA_password
-docker run -it --rm -v $PWD:/home/step smallstep/step-cli:0.15.16 bash -c " \
-step certificate create 'Offline Root CA' root_ca.crt root_ca.key --profile=root-ca \
+docker run -it --rm -v $PWD:/home/step smallstep/step-cli:0.15.17-rc5 bash -c " \
+step certificate create 'Offline Root CA' root_ca.crt root_ca.key --profile=root-ca --password-file=rootCA_password \
 "
 ```
 
@@ -78,7 +78,7 @@ Next, create the intermediate cert for use by the subordinate CA.
 
 ```
 [[ -f intermediateCA_password ]] || echo $(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1) > intermediateCA_password
-docker run -it --rm --user=$(id -u):$(id -g) -v $PWD:/home/step smallstep/step-cli:0.15.16 bash -c " \
+docker run -it --rm --user=$(id -u):$(id -g) -v $PWD:/home/step smallstep/step-cli:0.15.17-rc5 bash -c " \
 step certificate create 'Example Intermediate CA 1' \
     intermediate_ca.crt intermediate_ca.key \
     --profile=intermediate-ca --ca ./root_ca.crt \
@@ -96,7 +96,7 @@ step certificate create 'Example Intermediate CA 2'  intermediate_ca2.crt interm
 Create a wildcard certificate for "*.example.web".
 
 ```
-docker run -it --rm -v $PWD:/home/step smallstep/step-cli:0.15.16 bash -c " \
+docker run -it --rm -v $PWD:/home/step smallstep/step-cli:0.15.17-rc5 bash -c " \
 step certificate create 'example.web wildcard' \
     example.web.crt example.web.key \
     --profile=leaf --ca ./root_ca.crt \
@@ -110,7 +110,7 @@ step certificate create 'example.web wildcard' \
 Also, create a client certificate for connecting from Windows or WSL.
 
 ```
-docker run -it --rm -v $PWD:/home/step smallstep/step-cli:0.15.16 bash -c " \
+docker run -it --rm -v $PWD:/home/step smallstep/step-cli:0.15.17-rc5 bash -c " \
 step certificate create client_crt \
     client_crt.crt client_crt.key \
     --profile=leaf --ca ./root_ca.crt \
@@ -126,7 +126,7 @@ Convert the X.509 client certificate into a PFX and import it into Windows.
 openssl pkcs12 -export -out client_crt.pfx -inkey client_crt.key -in client_crt.crt -certfile root_ca.crt
 
 [[ -f client_crt_password ]] || echo $(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1) > client_crt_password
-docker run -it --rm -v $PWD:/home/step smallstep/step-cli:0.15.16 bash -c " \
+docker run -it --rm -v $PWD:/home/step smallstep/step-cli:0.15.17-rc5 bash -c " \
 step certificate p12 client_crt.p12 \
     client_crt.crt client_crt.key \
     --ca root_ca.crt \
@@ -559,4 +559,92 @@ yum update -y
 yum install -y git
 exit
 ssh-keygen -o -a 100 -t ed25519 -f ~/.ssh/id_ed25519 -N "" -C "adminx@localhost.localdomain"
+sudo yum install -y yum-utils
+sudo yum-config-manager \
+    --add-repo \
+    https://download.docker.com/linux/centos/docker-ce.repo
+sudo yum install -y docker-ce docker-ce-cli containerd.io
+sudo systemctl start docker
+sudo systemctl enable docker
+sudo usermod -aG docker $(whoami)
+sudo setfacl -d -m group:docker:rwx /usr/local/project
+sudo chgrp -hR docker /usr/local/project
+sudo chmod g+s /usr/local/project
+sudo chmod g+w /usr/local/project
+newgrp docker 
+
+git config --global user.email "rdwinter2@gmail.com"
+git config --global user.name "Robert D. Winter, 2nd"
+git config --global core.autocrlf input
+git config --global push.default simple
+git config --global credential.helper 'cache --timeout 99999999'
+git config --global rebase.autosquash true
+git config --global init.defaultBranch main
+
+sudo yum install python3
+sudo yum install -y python-jinja2 python-yaml python-crypto wget unzip
+git clone https://github.com/ansible/ansible.git --recursive ~/opt/ansible
+source ~/opt/ansible/hacking/env-setup -q
+curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
+alias python=python3
+python get-pip.py --user
+python -m pip install --user -r ./requirements.txt
+
+mkdir --parents ~/.ansible/.logins
+cat <<-EOT >> ~/.bashrc
+source ~/opt/ansible/hacking/env-setup -q
+export PATH=$PATH:~/opt/ansible/bin
+export ANSIBLE_INVENTORY=~/.ansible/ansible_hosts
+export ANSIBLE_CONFIG=~/.ansible/ansible.cfg
+export ANSIBLE_VAULT_PASSWORD_FILE=~/.ansible/.vault_pass
+export EDITOR=vi
+alias python=python3
+EOT
+echo "localhost ansible_connection=local" > ~/.ansible/ansible_hosts
+cat <<-EOT >> ~/.ansible/ansible.cfg
+[defaults]
+jinja2_extensions = jinja2.ext.do,jinja2.ext.i18n
+EOT
+echo $( openssl rand -base64 27 ) > ~/.ansible/.vault_pass
+chmod 700 ~/.ansible
+chmod 700 ~/.ansible/.logins
+chmod 600 ~/.ansible/.vault_pass
+. ~/.bashrc
+
+curl -sL https://rpm.nodesource.com/setup_16.x | sudo bash -
+sudo yum install -y nodejs gcc-c++ make
+curl -sL https://dl.yarnpkg.com/rpm/yarn.repo | sudo tee /etc/yum.repos.d/yarn.repo
+sudo yum install -y yarn
+sudo npm install -g npm@7.19.1
+npm install --save cuid
+
+node -p 'var cuid = require("cuid");console.log( cuid() );'
+
+sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+sudo chmod +x /usr/local/bin/docker-compose
+```
+
+
+## Hyper-V and VMware Workstation
+
+https://communities.vmware.com/t5/VMware-Workstation-Pro/VMware-Workstation-does-not-support-nested-virtualization-on/td-p/1864217
+
+If u want use vmware : use this command in powershell and reboot system:
+
+bcdedit /set hypervisorlaunchtype off
+
+If u want use hyper-v:
+
+bcdedit /set hypervisorlaunchtype auto
+
+Hyper-v and Vmvare still don't work together
+
+## More stuff 
+
+```sh
+t=$(mktemp -d);pushd $t
+curl -fsSL https://github.com/ekalinin/github-markdown-toc/archive/refs/tags/0.7.0.tar.gz | tar xvf -
+sudo mv */gh-md-toc /usr/local/bin/gh-md-toc
+rm -rf $t/*
+popd
 ```
