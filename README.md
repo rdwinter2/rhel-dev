@@ -63,40 +63,43 @@ x=$(sleep 600; yes | gcloud compute instances delete instance-1 --zone=us-centra
 
 Create an offline X.509 Certificate Authority on Windows Subsystem for Linux (WSL). 
 
-First, create a password for the root CA's key. Then create the root CA certificate and key, supplying the password when prompted.
+First, create a password for the root CA's key. Then create the root CA certificate and key, supplying the password when prompted. Next, create the intermediate cert for use by the subordinate CA. 
 
 ```
-mkdir -p $HOME/.certs; pushd $HOME/.certs
-[[ -f rootCA_password ]] || echo $(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1) > rootCA_password
-cat rootCA_password
-docker run -it --rm -v $PWD:/home/step smallstep/step-cli:0.15.17-rc5 bash -c " \
+mkdir -p $HOME/.certs; chmod 700 $HOME/.certs; pushd $HOME/.certs
+
+$([[ -f rootCA_password ]] || \
+echo $(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1) > rootCA_password); \
+$([[ -f root_ca.crt ]] || \
+docker run -it --rm -v $PWD:/home/step smallstep/step-cli:0.15.17 bash -c " \
 step certificate create 'Offline Root CA' root_ca.crt root_ca.key --profile=root-ca --password-file=rootCA_password \
-"
-```
-
-Next, create the intermediate cert for use by the subordinate CA. 
-
-```
-[[ -f intermediateCA_password ]] || echo $(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1) > intermediateCA_password
-docker run -it --rm --user=$(id -u):$(id -g) -v $PWD:/home/step smallstep/step-cli:0.15.17-rc5 bash -c " \
+2> /dev/null"); \
+$([[ -f intermediate_ca.crt ]] || \
+docker run -it --rm --user=$(id -u):$(id -g) -v $PWD:/home/step smallstep/step-cli:0.15.17 bash -c " \
 step certificate create 'Example Intermediate CA 1' \
     intermediate_ca.crt intermediate_ca.key \
     --profile=intermediate-ca --ca ./root_ca.crt \
     --ca-key <(step crypto key format --no-password --insecure --pem \
                --password-file <(cat rootCA_password) ./root_ca.key) \
     --no-password --insecure \
-"
-step certificate create 'Example Intermediate CA 2'  intermediate_ca2.crt intermediate_ca2.key --profile=intermediate-ca \
-   --ca ./root_ca.crt \
-   --ca-key <(step crypto key format --no-password --insecure --pem \
-            --password-file <(cat rootCA_password) ./root_ca.key) \
-   --san Example_Intermediate_CA_2
+2> /dev/null"); \
+$([[ -f example.web.crt ]] || \
+docker run -it --rm --user=$(id -u):$(id -g) -v $PWD:/home/step smallstep/step-cli:0.15.17 bash -c " \
+step certificate create 'example.web wildcard' \
+    example.web.crt example.web.key \
+    --profile=leaf --ca ./root_ca.crt \
+    --ca-key <(step crypto key format --no-password --insecure --pem \
+               --password-file <(cat rootCA_password) ./root_ca.key) \
+    --san *.example.web \
+    --no-password --insecure --not-after 2160h \
+2> /dev/null")
+
 ```
 
 Create a wildcard certificate for "*.example.web".
 
 ```
-docker run -it --rm -v $PWD:/home/step smallstep/step-cli:0.15.17-rc5 bash -c " \
+docker run -it --rm -v $PWD:/home/step smallstep/step-cli:0.15.17 bash -c " \
 step certificate create 'example.web wildcard' \
     example.web.crt example.web.key \
     --profile=leaf --ca ./root_ca.crt \
@@ -110,7 +113,7 @@ step certificate create 'example.web wildcard' \
 Also, create a client certificate for connecting from Windows or WSL.
 
 ```
-docker run -it --rm -v $PWD:/home/step smallstep/step-cli:0.15.17-rc5 bash -c " \
+docker run -it --rm -v $PWD:/home/step smallstep/step-cli:0.15.17 bash -c " \
 step certificate create client_crt \
     client_crt.crt client_crt.key \
     --profile=leaf --ca ./root_ca.crt \
@@ -126,7 +129,7 @@ Convert the X.509 client certificate into a PFX and import it into Windows.
 openssl pkcs12 -export -out client_crt.pfx -inkey client_crt.key -in client_crt.crt -certfile root_ca.crt
 
 [[ -f client_crt_password ]] || echo $(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1) > client_crt_password
-docker run -it --rm -v $PWD:/home/step smallstep/step-cli:0.15.17-rc5 bash -c " \
+docker run -it --rm -v $PWD:/home/step smallstep/step-cli:0.15.17 bash -c " \
 step certificate p12 client_crt.p12 \
     client_crt.crt client_crt.key \
     --ca root_ca.crt \
