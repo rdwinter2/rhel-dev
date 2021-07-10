@@ -118,6 +118,13 @@ sudo curl -fsSL -O https://github.com/vmware-tanzu/octant/releases/download/v${o
 sudo apt-get install ./octant_${octant_vers}_Linux-64bit.deb
 curl -fsSL -O "https://storage.googleapis.com/kubernetes-release/release/$(curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt)/bin/linux/amd64/kubectl"
 sudo install --mode=755 --owner=root ./kubectl /usr/local/bin
+curl -Lo skaffold https://storage.googleapis.com/skaffold/releases/latest/skaffold-linux-amd64 && \
+sudo install skaffold /usr/local/bin/
+
+VERSION=$(curl -s https://api.github.com/repos/ahmetb/kubectx/releases/latest | jq '.tag_name' | sed 's/"//g')
+curl -fsSL https://github.com/ahmetb/kubectx/releases/download/${VERSION}/kubectx_${VERSION}_linux_x86_64.tar.gz | sudo tar xzf - -C /usr/local/bin
+curl -fsSL https://github.com/ahmetb/kubectx/releases/download/${VERSION}/kubens_${VERSION}_linux_x86_64.tar.gz | sudo tar xzf - -C  /usr/local/bin/
+
 curl https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | bash
 curl -fsSL https://github.com/jenkins-x/jx-cli/releases/download/$(curl -s https://api.github.com/repos/jenkins-x/jx-cli/releases/latest | jq '.tag_name' | sed 's/"//g')/jx-cli-linux-amd64.tar.gz | tar xzv 
 sudo install --mode=755 --owner=root ./jx /usr/local/bin

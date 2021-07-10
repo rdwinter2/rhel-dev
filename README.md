@@ -74,6 +74,8 @@ $([[ -f root_ca.crt ]] || \
 docker run -it --rm -v $PWD:/home/step smallstep/step-cli:0.15.17 bash -c " \
 step certificate create 'Offline Root CA' root_ca.crt root_ca.key --profile=root-ca --password-file=rootCA_password \
 2> /dev/null"); \
+$([[ -f intermediate_password ]] || \
+echo $(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1) > intermediate_password); \
 $([[ -f intermediate_ca.crt ]] || \
 docker run -it --rm --user=$(id -u):$(id -g) -v $PWD:/home/step smallstep/step-cli:0.15.17 bash -c " \
 step certificate create 'Example Intermediate CA 1' \
